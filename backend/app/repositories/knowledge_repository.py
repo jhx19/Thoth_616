@@ -28,8 +28,14 @@ class KnowledgeRepository:
         sme_id: str,
         topic: str,
         content: str,
-        sources: dict,
+        sources: dict | None = None,
+        source_interview_id: str | None = None,
     ) -> KnowledgeRead:
+        if sources is None:
+            sources = {
+                "interviews": [source_interview_id] if source_interview_id else [],
+                "materials": []
+            }
         entry = KnowledgeEntry(
             id=new_id("ke"),
             sme_id=sme_id,

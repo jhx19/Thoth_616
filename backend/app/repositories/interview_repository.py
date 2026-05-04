@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from app.models.interview import Interview, InterviewTurn
+from app.models.interview import Interview, InterviewTurn, InterviewTopicSummary
 from app.schemas.interview import (
     InterviewRead, InterviewSummary, InterviewWithTurns, InterviewTurnRead
 )
@@ -11,12 +11,20 @@ class InterviewRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(self, sme_id: str, topic: str) -> InterviewRead:
+    async def create(
+        self,
+        sme_id: str,
+        topic: str,
+        requested_by: str | None = None,
+        admin_note: str | None = None,
+    ) -> InterviewRead:
         interview = Interview(
             id=new_id("int"),
             sme_id=sme_id,
             topic=topic,
             status="in_progress",
+            requested_by=requested_by,
+            admin_note=admin_note,
         )
         self.db.add(interview)
         await self.db.commit()
@@ -81,6 +89,7 @@ class InterviewRepository:
         interview_id: str,
         sme_response: str,
         agent_follow_up: str | None,
+        refined_summary: str | None = None,
     ):
         result = await self.db.execute(
             select(func.max(InterviewTurn.turn_number)).where(
@@ -94,6 +103,7 @@ class InterviewRepository:
             turn_number=max_turn + 1,
             sme_response=sme_response,
             agent_follow_up=agent_follow_up,
+            refined_summary=refined_summary,
         )
         self.db.add(turn)
         await self.db.commit()
@@ -108,6 +118,50 @@ class InterviewRepository:
         if interview:
             interview.status = "completed"
             await self.db.commit()
+
+    async def save_topic_summary(
+        self,
+        interview_id: str,
+        topic_index: int,
+        topic_question: str,
+        refined_content: str,
+    ) -> None:
+        # upsert: update existing row or insert a new summary for this topic
+        existing = await self.db.execute(
+            select(InterviewTopicSummary).where(
+                InterviewTopicSummary.interview_id == interview_id,
+                InterviewTopicSummary.topic_index == topic_index,
+            )
+        )
+        row = existing.scalar_one_or_none()
+        if row:
+            row.topic_question = topic_question
+            row.refined_content = refined_content
+        else:
+            summary = InterviewTopicSummary(
+                id=new_id("tsum"),
+                interview_id=interview_id,
+                topic_index=topic_index,
+                topic_question=topic_question,
+                refined_content=refined_content,
+            )
+            self.db.add(summary)
+        await self.db.commit()
+
+    async def get_all_topic_summaries(self, interview_id: str) -> list[dict]:
+        result = await self.db.execute(
+            select(InterviewTopicSummary)
+            .where(InterviewTopicSummary.interview_id == interview_id)
+            .order_by(InterviewTopicSummary.topic_index.asc())
+        )
+        return [
+            {
+                "topic_index": s.topic_index,
+                "topic_question": s.topic_question,
+                "refined_content": s.refined_content,
+            }
+            for s in result.scalars().all()
+        ]
 
     def _to_schema(self, interview: Interview) -> InterviewRead:
         return InterviewRead(
