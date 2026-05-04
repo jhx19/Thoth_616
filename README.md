@@ -1,22 +1,5 @@
 # Setup & Reproduction Guide
 
-## Deployed API
-
-| | |
-|---|---|
-| **Base URL** | `https://thoth-616.onrender.com/api/v1` |
-| **Benchmark API Key** | `thoth-secret-2026` |
-| **Authorization header** | `Authorization: Bearer thoth-secret-2026` |
-
-Quick health check:
-```bash
-curl https://thoth-616.onrender.com/api/v1/health
-```
-
----
-
-## Run Locally (Step-by-Step)
-
 ### Prerequisites
 
 - Python 3.12+
@@ -26,97 +9,35 @@ curl https://thoth-616.onrender.com/api/v1/health
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-org/Thoth_616.git
+git clone https://github.com/jhx19/Thoth_616.git
 cd Thoth_616
 ```
 
-### 2. Create the backend `.env` file
+### 2. Set up the `.env` file
+
+Copy the example and fill in your credentials:
 
 ```bash
-cp backend/.env.example backend/.env   # if available, otherwise create manually
+cp backend/.env.example backend/.env
 ```
 
-Edit `backend/.env` with your credentials:
-
-```env
-# Database (Supabase connection pooler URL — port 6543 for asyncpg + PgBouncer)
-DATABASE_URL=postgresql+asyncpg://<user>:<password>@<host>:6543/postgres
-
-# LLM (OpenRouter — supports gpt-4.1, gpt-4.1-mini, etc.)
-LLM_API_KEY=sk-or-v1-...
-LLM_BASE_URL=https://openrouter.ai/api/v1
-INTERVIEW_MODEL=openai/gpt-4.1-mini
-SYNTHESIS_MODEL=openai/gpt-4.1
-PLANNING_MODEL=openai/gpt-4.1
-
-# Embeddings (direct OpenAI — text-embedding-3-small, 1024 dims)
-OPENAI_API_KEY=sk-proj-...
-
-# Benchmark auth key (set to any secret string you choose)
-BENCHMARK_API_KEY=thoth-secret-2026
-```
+All required keys and their format are documented in `backend/.env.example`.
 
 ### 3. Run database migrations
 
 ```bash
 cd backend
-pip install alembic asyncpg
+pip install -r requirements.txt
 alembic upgrade head
 ```
 
-### 4. Install dependencies and start the server
+### 4. Start the server
 
 ```bash
-cd backend
-pip install -r requirements.txt
 python -m uvicorn app.main:app --reload --port 8000
 ```
 
-The API is now live at `http://localhost:8000/api/v1`.
-
-### 5. Verify
-
-```bash
-curl http://localhost:8000/api/v1/health
-# → {"status":"healthy","timestamp":"..."}
-
-curl -X POST http://localhost:8000/api/v1/smes \
-  -H "Authorization: Bearer thoth-secret-2026" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Test SME","specialization":"Privacy Law","sub_areas":["GDPR"],"contact_email":"test@test.com"}'
-# → {"sme_id":"sme_...","name":"Test SME",...}
-```
-
----
-
-## API Quick Reference
-
-All endpoints are under `/api/v1` with `Authorization: Bearer thoth-secret-2026`.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Health check (no auth required) |
-| POST | `/smes` | Create SME profile |
-| GET | `/smes` | List all SMEs |
-| GET | `/smes/{id}` | Get SME profile |
-| GET | `/smes/{id}/interviews` | List interviews for SME |
-| POST | `/smes/{id}/interviews` | Start interview session |
-| POST | `/interviews/{id}/turns` | Submit SME answer, get follow-up |
-| GET | `/interviews/{id}` | Get full interview transcript |
-| POST | `/smes/{id}/materials` | Upload PDF or text file |
-| GET | `/smes/{id}/materials` | List materials for SME |
-| POST | `/smes/{id}/knowledge/synthesize` | Synthesize knowledge from interviews + materials |
-| GET | `/knowledge` | List all knowledge entries |
-| GET | `/knowledge/{id}` | Get knowledge entry |
-| PUT | `/knowledge/{id}` | Edit knowledge entry |
-| POST | `/knowledge/{id}/approve` | SME approves draft |
-| POST | `/knowledge/{id}/admin-approve` | Admin promotes to knowledge base |
-| POST | `/knowledge/{id}/reject` | Reject entry |
-| POST | `/query` | Ask a question (grounded Q&A, clarification, or routing) |
-| POST | `/system/purge` | Wipe all data (benchmark state reset) |
-| POST | `/system/reset` | Clear session state only |
-
-See `api-specification.md` for full request/response schemas.
+The API is now live at `http://localhost:8000/api/v1`. The benchmark API key is in `backend/.env` as `BENCHMARK_API_KEY`.
 
 ---
 
