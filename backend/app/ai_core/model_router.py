@@ -1,14 +1,14 @@
 TASK_MODEL_MAP: dict[str, str] = {
-    # Haiku — classification and path decisions
-    "clarify_prompt":            "claude-haiku-4-5-20251001",
-    "intent_classify":           "claude-haiku-4-5-20251001",  # kept for backward compat
-    "interview_followup":        "claude-haiku-4-5-20251001",
-    "fact_extraction_interview": "claude-haiku-4-5-20251001",
-    "fact_extraction_material":  "claude-haiku-4-5-20251001",
-    # Sonnet — answer generation and SME routing
-    "answer_generate":   "claude-sonnet-4-6",
-    "sme_prompt":        "claude-sonnet-4-6",
-    "synthesis_compose": "claude-sonnet-4-6",
+    # Fast/cheap — classification and path decisions
+    "clarify_prompt":            "openai/gpt-4.1-mini",
+    "intent_classify":           "openai/gpt-4.1-mini",
+    "interview_followup":        "openai/gpt-4.1-mini",
+    "fact_extraction_interview": "openai/gpt-4.1-mini",
+    "fact_extraction_material":  "openai/gpt-4.1-mini",
+    # Full — answer generation and SME routing
+    "answer_generate":   "openai/gpt-4.1",
+    "sme_prompt":        "openai/gpt-4.1",
+    "synthesis_compose": "openai/gpt-4.1",
 }
 
 
