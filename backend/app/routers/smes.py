@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.middleware.auth import verify_token
@@ -8,8 +8,26 @@ from app.schemas.sme import SMECreate, SMERead, SMEListResponse
 router = APIRouter(prefix="/api/v1", dependencies=[Depends(verify_token)])
 
 
+async def _try_embed_sme(sme_id: str) -> None:
+    """Background task: embed SME profile. Safe to fail - D provides this later."""
+    try:
+        from app.services.embedding_service import EmbeddingService
+        from app.db import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            embedding_service = EmbeddingService()
+            await embedding_service.embed_sme(sme_id, db)
+    except ImportError:
+        pass  # EmbeddingService not yet available
+    except Exception:
+        pass  # Never let background task crash the request
+
+
 @router.post("/smes", response_model=SMERead, status_code=201)
-async def create_sme(body: SMECreate, db: AsyncSession = Depends(get_db)):
+async def create_sme(
+    body: SMECreate,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
     repo = SMERepository(db)
     sme = await repo.create(
         name=body.name,
@@ -21,17 +39,8 @@ async def create_sme(body: SMECreate, db: AsyncSession = Depends(get_db)):
         responsible_products=body.responsible_products,
         sub_expertise=body.sub_expertise,
     )
-
-    # Hook for Person D: embed SME profile for semantic routing
-    # D will replace this block with the real EmbeddingService call
-    try:
-        from app.services.embedding_service import EmbeddingService  # D provides this
-        import asyncio
-        embedding_service = EmbeddingService()
-        asyncio.create_task(embedding_service.embed_sme(sme.sme_id, db))
-    except ImportError:
-        pass  # EmbeddingService not yet available - safe to skip during development
-
+    # Hook for Person D: runs after response is sent, uses its own DB session
+    background_tasks.add_task(_try_embed_sme, sme.sme_id)
     return sme
 
 
