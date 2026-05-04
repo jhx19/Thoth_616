@@ -28,11 +28,6 @@ app.include_router(query.router)
 app.include_router(stubs_router)
 
 
-@app.on_event("startup")
-async def startup():
-    app.state.query_service = _build_query_service()
-
-
 def _build_query_service():
     from app.ai_core.prompt_loader import PromptLoader
     from app.ai_core.model_router import ModelRouter
@@ -58,6 +53,10 @@ def _build_query_service():
         session_repo=session_repo, embedding=embedding,
         sme_repo=sme_repo,
     )
+
+
+# Initialize after function is defined
+app.state.query_service = _build_query_service()
 
 
 @app.get("/api/v1/health", tags=["health"])

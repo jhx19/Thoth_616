@@ -20,9 +20,9 @@ def _chunk_text(text: str, target_tokens: int, overlap: int) -> list[str]:
 
 class EmbeddingService:
     def __init__(self, client=None):
-        # Embeddings go directly to OpenAI — no base_url override
+        # Embeddings go directly to OpenAI using dedicated OPENAI_API_KEY
         self._client = client or AsyncOpenAI(
-            api_key=os.getenv("LLM_API_KEY"),
+            api_key=os.getenv("OPENAI_API_KEY"),
         )
 
     async def embed_text(self, text: str) -> list[float]:
