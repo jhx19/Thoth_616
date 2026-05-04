@@ -11,14 +11,18 @@ from app.middleware.tokens import TokenTrackingMiddleware
 from app.routers import smes, knowledge, system, admin, interviews, materials
 from app.routers import interview, synthesis, query
 from app.routers.stubs import router as stubs_router
+from fastapi.middleware.cors import CORSMiddleware
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 app = FastAPI(title="Project Thoth API", version="1.0.0")
-
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-app.add_middleware(TokenTrackingMiddleware)
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(smes.router)
 app.include_router(knowledge.router)
 app.include_router(system.router)
