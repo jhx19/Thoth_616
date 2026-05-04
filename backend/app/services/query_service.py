@@ -54,7 +54,7 @@ class QueryService:
         session = await self._session_repo.get_or_create(session_id)
 
         # Restore context if previous turn was a clarifying question
-        tries = getattr(session, "clarify_tries", 0)
+        tries = (session.pending_context or {}).get("clarify_tries", 0) if hasattr(session, "pending_context") else 0
         if session.pending_clarification:
             question = f"{session.last_question} [clarification: {question}]"
             await self._session_repo.clear_pending(session_id)

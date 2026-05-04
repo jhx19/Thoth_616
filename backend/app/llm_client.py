@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
+from app.ai_core.token_tracker import TokenTracker
+
 load_dotenv()
 
 
@@ -33,6 +35,11 @@ class LLMClient:
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
+        )
+        TokenTracker.record(
+            model=model,
+            prompt=response.usage.prompt_tokens,
+            completion=response.usage.completion_tokens,
         )
         return LLMResponse(
             content=response.choices[0].message.content,
