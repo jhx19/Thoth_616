@@ -10,3 +10,5 @@ python-multipart==0.0.12
 python-dotenv==1.0.1
 nanoid==2.0.0
 httpx==0.27.2
+openai
+pypdf
