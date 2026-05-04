@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()  # must run before any module reads env vars via os.getenv
+
 from pathlib import Path
 from datetime import datetime, timezone
 from fastapi import FastAPI
