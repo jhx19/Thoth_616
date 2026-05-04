@@ -68,6 +68,16 @@ async def admin_approve(entry_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Knowledge entry not found")
     except InvalidStateError as e:
         raise HTTPException(status_code=409, detail=str(e))
+
+    # Hook for Person D: chunk and embed approved knowledge entry
+    # D will replace this block with the real EmbeddingService call
+    try:
+        from app.services.embedding_service import EmbeddingService  # D provides this
+        embedding_service = EmbeddingService()
+        await embedding_service.chunk_and_embed_knowledge(entry_id, db)
+    except ImportError:
+        pass  # EmbeddingService not yet available - safe to skip during development
+
     return KnowledgeAdminApproveResponse(
         entry_id=entry.entry_id,
         status=entry.status,

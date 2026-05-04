@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI
 from datetime import datetime, timezone
-from app.routers import smes, knowledge, system, admin
+from app.routers import smes, knowledge, system, admin, interviews, materials
 from app.routers import interview, synthesis
 from app.routers.stubs import router as stubs_router
 
@@ -11,6 +11,8 @@ app.include_router(smes.router)
 app.include_router(knowledge.router)
 app.include_router(system.router)
 app.include_router(admin.router)
+app.include_router(interviews.router)
+app.include_router(materials.router)
 app.include_router(interview.router)
 app.include_router(synthesis.router)
 app.include_router(stubs_router)
