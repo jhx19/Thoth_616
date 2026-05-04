@@ -15,7 +15,8 @@ if (typeof Element !== "undefined") {
 
 afterEach(() => {
   cleanup();
-  vi.restoreAllMocks();
+  // Do not call vi.restoreAllMocks() here — it clears vi.fn implementations
+  // registered in imported vi.mock factories (e.g. next/navigation push).
 });
 
 // Quiet the noisy `act()` warning for client components that

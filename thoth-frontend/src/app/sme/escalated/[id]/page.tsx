@@ -6,16 +6,15 @@ import { ArrowLeft, AlertTriangle, Send } from "lucide-react";
 import { SmeShell } from "@/components/layout/sme-shell";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { AiBubble, UserBubble } from "@/components/chat/message-bubbles";
-import { escalatedThreads } from "@/lib/mock-data";
-
+/**
+ * Escalated-question threads are not yet exposed on `/api/v1`.
+ * This page keeps the SME reply UX; history stays empty until a backend route exists.
+ */
 export default function EscalatedAnswerPage({
   params,
 }: {
   params: { id: string };
 }) {
-  const thread = escalatedThreads[params.id] ?? escalatedThreads.eq_001;
-
   const [reply, setReply] = useState("");
   const [sentReply, setSentReply] = useState<string | null>(null);
   const [escalated, setEscalated] = useState(false);
@@ -27,10 +26,7 @@ export default function EscalatedAnswerPage({
     setReply("");
   }
 
-  const truncatedTitle =
-    thread.question.length > 60
-      ? thread.question.slice(0, 60).trimEnd() + "…"
-      : thread.question;
+  const title = `Escalation ${params.id}`;
 
   return (
     <SmeShell>
@@ -46,7 +42,7 @@ export default function EscalatedAnswerPage({
               <ArrowLeft size={16} />
             </Link>
             <h2 className="truncate text-[15px] font-semibold text-ink">
-              {truncatedTitle}
+              {title}
             </h2>
           </div>
           <Button
@@ -63,13 +59,11 @@ export default function EscalatedAnswerPage({
         {/* Chat history (read-only) */}
         <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-6">
           <div className="mx-auto max-w-3xl space-y-5">
-            {thread.history.map((m, i) =>
-              m.role === "user" ? (
-                <UserBubble key={i} content={m.content} />
-              ) : (
-                <AiBubble key={i}>{m.content}</AiBubble>
-              )
-            )}
+            <p className="rounded-card border border-line bg-card px-4 py-3 text-center text-xs text-muted">
+              Conversation history for escalations will load here when the API
+              provides a thread endpoint. Escalation id:{" "}
+              <span className="font-mono text-ink/80">{params.id}</span>
+            </p>
 
             {/* Forwarded divider */}
             <div className="flex items-center gap-3 py-2">
@@ -109,7 +103,8 @@ export default function EscalatedAnswerPage({
             />
             <div className="mt-3 flex items-center justify-between">
               <p className="text-[11px] text-muted">
-                Your answer will be sent back to the user as an SME response.
+                Your answer will be sent back to the user as an SME response once
+                the escalation API is connected.
               </p>
               <Button
                 variant="primary"

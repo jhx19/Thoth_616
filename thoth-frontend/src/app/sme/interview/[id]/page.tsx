@@ -1,33 +1,48 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Bot } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertCircle, ArrowLeft, Bot, RefreshCw } from "lucide-react";
 import { SmeShell } from "@/components/layout/sme-shell";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { interviewThreads, type InterviewTurn } from "@/lib/mock-data";
+import {
+  ApiError,
+  InterviewTurnRecord,
+  endSmeInterview,
+  resumeInterview,
+  submitInterviewAnswer,
+  type EntryStatus,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const MAX_CHARS = 4000;
+
+const META_PREFIX = "thoth_interview_topic:";
 
 export default function SmeInterviewPage({
   params,
 }: {
   params: { id: string };
 }) {
-  const base =
-    interviewThreads[params.id] ??
-    interviewThreads[Object.keys(interviewThreads)[0]];
+  const interviewId = params.id;
+  const searchParams = useSearchParams();
+  const topicFromQuery = searchParams.get("topic");
 
-  const [history, setHistory] = useState<InterviewTurn[]>(base.history);
-  const [turn, setTurn] = useState(base.turn);
+  const [topic, setTopic] = useState<string>("Interview");
+  const [status, setStatus] = useState<EntryStatus>("in_progress");
+  const [history, setHistory] = useState<InterviewTurnRecord[]>([]);
+  const [turn, setTurn] = useState(1);
   const [ended, setEnded] = useState(false);
   const [answer, setAnswer] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // index of the latest AI question (highlighted)
   const lastAiIdx = (() => {
     for (let i = history.length - 1; i >= 0; i--) {
       if (history[i].role === "ai") return i;
@@ -35,16 +50,85 @@ export default function SmeInterviewPage({
     return -1;
   })();
 
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      if (topicFromQuery?.trim()) {
+        setTopic(topicFromQuery.trim());
+      } else if (typeof window !== "undefined") {
+        const stored = window.sessionStorage.getItem(
+          `${META_PREFIX}${interviewId}`,
+        );
+        if (stored) setTopic(stored);
+      }
+
+      const data = await resumeInterview(interviewId);
+      setTurn(data.turn_number ?? 1);
+      const q = (data.last_question ?? "").trim();
+      if (q) {
+        setHistory([{ role: "ai", content: q }]);
+      } else {
+        setHistory([]);
+      }
+    } catch (err) {
+      setLoadError(formatError(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [interviewId, topicFromQuery]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [history]);
 
-  function submit() {
+  async function endInterview() {
+    try {
+      await endSmeInterview(interviewId);
+      setStatus("completed");
+    } catch {
+      // In-memory interviews from /interviews/admin-initiate may not exist in
+      // the SQL-backed end endpoint; still mark the UI as ended locally.
+      setStatus("completed");
+    }
+    setEnded(true);
+  }
+
+  async function submit() {
     const v = answer.trim();
-    if (!v || ended) return;
-    setHistory((h) => [...h, { role: "sme", content: v }]);
+    if (!v || ended || submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    const optimistic: InterviewTurnRecord = { role: "sme", content: v };
+    setHistory((h) => [...h, optimistic]);
     setAnswer("");
-    setTurn((t) => t + 1);
+    try {
+      const res = await submitInterviewAnswer(interviewId, v);
+      const t = res.type;
+      if (t === "completed") {
+        setEnded(true);
+        setStatus("completed");
+        return;
+      }
+      const nextQ = (res.question ?? "").trim();
+      if (nextQ) {
+        setHistory((h) => [...h, { role: "ai", content: nextQ }]);
+      }
+      if (typeof res.turn_number === "number") {
+        setTurn(res.turn_number);
+      } else {
+        setTurn((n) => n + 1);
+      }
+    } catch (err) {
+      setHistory((h) => h.filter((m) => m !== optimistic));
+      setSubmitError(formatError(err));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -62,19 +146,19 @@ export default function SmeInterviewPage({
             </Link>
             <div className="min-w-0">
               <h2 className="truncate text-[15px] font-semibold text-ink">
-                {base.topic}
+                {topic}
               </h2>
               <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
                 <span>Turn {turn}</span>
                 <span>·</span>
-                <StatusBadge status={ended ? "completed" : base.status} />
+                <StatusBadge status={ended ? "completed" : status} />
               </div>
             </div>
           </div>
           <Button
             variant="secondary"
             size="md"
-            onClick={() => setEnded(true)}
+            onClick={() => void endInterview()}
             disabled={ended}
           >
             {ended ? "Interview Ended" : "End Interview"}
@@ -87,15 +171,40 @@ export default function SmeInterviewPage({
           className="flex-1 overflow-y-auto scrollbar-thin px-6 py-6"
         >
           <div className="mx-auto max-w-3xl space-y-5">
-            {history.map((m, i) =>
-              m.role === "ai" ? (
-                <AiQuestion
-                  key={i}
-                  content={m.content}
-                  highlighted={i === lastAiIdx && !ended}
-                />
-              ) : (
-                <SmeAnswer key={i} content={m.content} />
+            {loading ? (
+              <div className="rounded-card border border-line bg-card px-4 py-6 text-center text-xs text-muted">
+                Loading interview…
+              </div>
+            ) : loadError ? (
+              <div className="flex items-start justify-between gap-4 rounded-card border border-[#FECACA] bg-[#FEF2F2] px-4 py-3">
+                <div className="flex items-start gap-2 text-sm text-[#991B1B]">
+                  <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                  <div>
+                    <div className="font-medium">Couldn&apos;t load interview</div>
+                    <div className="text-xs">{loadError}</div>
+                  </div>
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => void load()}>
+                  <RefreshCw size={14} />
+                  Retry
+                </Button>
+              </div>
+            ) : history.length === 0 ? (
+              <div className="rounded-card border border-line bg-card px-4 py-6 text-center text-xs text-muted">
+                No active question from the server yet — try refreshing, or
+                confirm this interview was started from the admin portal.
+              </div>
+            ) : (
+              history.map((m, i) =>
+                m.role === "ai" ? (
+                  <AiQuestion
+                    key={i}
+                    content={m.content}
+                    highlighted={i === lastAiIdx && !ended}
+                  />
+                ) : (
+                  <SmeAnswer key={i} content={m.content} />
+                ),
               )
             )}
 
@@ -117,7 +226,7 @@ export default function SmeInterviewPage({
               }
               rows={6}
               placeholder="Share your expertise in detail…"
-              disabled={ended}
+              disabled={ended || submitting}
             />
             <div className="mt-2 flex items-center justify-between text-[11px] text-muted">
               <span>
@@ -125,14 +234,20 @@ export default function SmeInterviewPage({
               </span>
               <span>Be specific — concrete examples help the draft.</span>
             </div>
+            {submitError && (
+              <div className="mt-2 flex items-start gap-2 rounded-input border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#991B1B]">
+                <AlertCircle size={14} className="mt-px shrink-0" />
+                <span>{submitError}</span>
+              </div>
+            )}
             <Button
               variant="primary"
               size="lg"
               className="mt-3 w-full"
-              onClick={submit}
-              disabled={!answer.trim() || ended}
+              onClick={() => void submit()}
+              disabled={!answer.trim() || ended || submitting}
             >
-              Submit Answer
+              {submitting ? "Submitting…" : "Submit Answer"}
             </Button>
           </div>
         </div>
@@ -154,13 +269,13 @@ function AiQuestion({
         className={cn(
           "max-w-[640px] rounded-card bg-bubble-ai-bg px-4 py-2.5 text-sm text-bubble-ai-fg",
           highlighted &&
-            "border-l-2 border-magenta bg-card shadow-card text-[15px] leading-relaxed"
+            "border-l-2 border-magenta bg-card shadow-card text-[15px] leading-relaxed",
         )}
       >
         <div
           className={cn(
             "mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide",
-            highlighted ? "text-magenta" : "text-ink/60"
+            highlighted ? "text-magenta" : "text-ink/60",
           )}
         >
           <Bot size={12} />
@@ -180,4 +295,12 @@ function SmeAnswer({ content }: { content: string }) {
       </div>
     </div>
   );
+}
+
+function formatError(err: unknown): string {
+  if (err instanceof ApiError) {
+    return err.status ? `${err.message} (HTTP ${err.status})` : err.message;
+  }
+  if (err instanceof Error) return err.message;
+  return "Unknown error";
 }

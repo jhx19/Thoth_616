@@ -1,18 +1,30 @@
 "use client";
 
-import { useState } from "react";
-import { Search, X, FileText, CircleDot } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertCircle,
+  CircleDot,
+  FileText,
+  RefreshCw,
+  Search,
+  X,
+} from "lucide-react";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import {
-  knowledgeBaseEntries,
-  smes,
-  type KnowledgeBaseEntry,
-} from "@/lib/mock-data";
+  AdminKnowledgeRow,
+  AdminSme,
+  ApiError,
+  EntryStatus,
+  KnowledgeEntry,
+  getKnowledge,
+  listAdminKnowledge,
+  listAdminSmes,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-const STATUS_FILTERS: { id: "sme_approved" | "approved" | "rejected"; label: string }[] = [
+const STATUS_FILTERS: { id: EntryStatus; label: string }[] = [
   { id: "sme_approved", label: "SME Approved" },
   { id: "approved", label: "Approved" },
   { id: "rejected", label: "Rejected" },
@@ -20,23 +32,47 @@ const STATUS_FILTERS: { id: "sme_approved" | "approved" | "rejected"; label: str
 
 export default function AdminKnowledgePage() {
   const [smeFilter, setSmeFilter] = useState<Set<string>>(new Set());
-  const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<Set<EntryStatus>>(new Set());
   const [topic, setTopic] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const open = openId
-    ? knowledgeBaseEntries.find((e) => e.id === openId) ?? null
-    : null;
+  const [rows, setRows] = useState<AdminKnowledgeRow[]>([]);
+  const [smes, setSmes] = useState<AdminSme[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const filtered = knowledgeBaseEntries.filter((e) => {
-    if (smeFilter.size > 0 && !smeFilter.has(e.smeId)) return false;
-    if (statusFilter.size > 0 && !statusFilter.has(e.status)) return false;
-    if (topic.trim() && !e.topic.toLowerCase().includes(topic.toLowerCase()))
-      return false;
-    return true;
-  });
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [knowledge, smeList] = await Promise.all([
+        listAdminKnowledge(),
+        listAdminSmes(),
+      ]);
+      setRows(knowledge);
+      setSmes(smeList);
+    } catch (err) {
+      setLoadError(formatError(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  function toggleIn(set: Set<string>, id: string, setter: (s: Set<string>) => void) {
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const filtered = useMemo(() => {
+    return rows.filter((e) => {
+      if (smeFilter.size > 0 && !smeFilter.has(e.sme_id)) return false;
+      if (statusFilter.size > 0 && !statusFilter.has(e.status)) return false;
+      if (topic.trim() && !e.topic.toLowerCase().includes(topic.toLowerCase()))
+        return false;
+      return true;
+    });
+  }, [rows, smeFilter, statusFilter, topic]);
+
+  function toggleIn<T>(set: Set<T>, id: T, setter: (s: Set<T>) => void) {
     const next = new Set(set);
     if (next.has(id)) next.delete(id);
     else next.add(id);
@@ -48,6 +84,8 @@ export default function AdminKnowledgePage() {
     setStatusFilter(new Set());
     setTopic("");
   }
+
+  const openRow = openId ? rows.find((e) => e.id === openId) ?? null : null;
 
   return (
     <AdminShell title="Knowledge Base">
@@ -68,14 +106,20 @@ export default function AdminKnowledgePage() {
 
           {/* By SME */}
           <FilterGroup label="SME">
-            {smes.map((s) => (
-              <Checkbox
-                key={s.id}
-                label={s.name}
-                checked={smeFilter.has(s.id)}
-                onChange={() => toggleIn(smeFilter, s.id, setSmeFilter)}
-              />
-            ))}
+            {smes.length === 0 ? (
+              <p className="text-xs text-muted">
+                {loading ? "Loading…" : "No SMEs"}
+              </p>
+            ) : (
+              smes.map((s) => (
+                <Checkbox
+                  key={s.sme_id}
+                  label={s.name}
+                  checked={smeFilter.has(s.sme_id)}
+                  onChange={() => toggleIn(smeFilter, s.sme_id, setSmeFilter)}
+                />
+              ))
+            )}
           </FilterGroup>
 
           {/* By Status */}
@@ -116,7 +160,35 @@ export default function AdminKnowledgePage() {
             </p>
           </div>
           <div className="px-6 py-4">
-            {filtered.length === 0 ? (
+            {loadError ? (
+              <div className="flex flex-col items-center justify-center rounded-card border border-[#FECACA] bg-[#FEF2F2] py-16 text-center">
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-card text-[#991B1B]">
+                  <AlertCircle size={18} />
+                </div>
+                <p className="text-sm font-medium text-[#991B1B]">
+                  Couldn&apos;t load knowledge base
+                </p>
+                <p className="mt-1 max-w-md text-xs text-[#991B1B]/80">
+                  {loadError}
+                </p>
+                <div className="mt-4">
+                  <Button variant="secondary" size="sm" onClick={load}>
+                    <RefreshCw size={14} />
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            ) : loading ? (
+              <div className="overflow-hidden rounded-card border border-line bg-card shadow-card">
+                <div className="h-12 animate-pulse border-b border-line bg-page" />
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="h-12 animate-pulse border-b border-line bg-card last:border-0"
+                  />
+                ))}
+              </div>
+            ) : filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-card border border-dashed border-line bg-card py-16 text-center">
                 <p className="text-sm font-medium text-ink">No entries match</p>
                 <p className="mt-1 text-xs text-muted">
@@ -132,7 +204,9 @@ export default function AdminKnowledgePage() {
                       <th className="px-5 py-2.5 font-medium">SME</th>
                       <th className="px-5 py-2.5 font-medium">Status</th>
                       <th className="px-5 py-2.5 font-medium">Created</th>
-                      <th className="px-5 py-2.5 font-medium text-right">Action</th>
+                      <th className="px-5 py-2.5 font-medium text-right">
+                        Action
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -144,12 +218,12 @@ export default function AdminKnowledgePage() {
                         <td className="px-5 py-3 font-medium text-ink">
                           {e.topic}
                         </td>
-                        <td className="px-5 py-3 text-ink/80">{e.smeName}</td>
+                        <td className="px-5 py-3 text-ink/80">{e.sme_name}</td>
                         <td className="px-5 py-3">
                           <StatusBadge status={e.status} />
                         </td>
                         <td className="px-5 py-3 text-xs text-muted">
-                          {e.createdAt}
+                          {formatDate(e.created_at)}
                         </td>
                         <td className="px-5 py-3 text-right">
                           <Button
@@ -170,7 +244,7 @@ export default function AdminKnowledgePage() {
         </section>
 
         {/* Detail panel slide-in */}
-        <DetailPanel entry={open} onClose={() => setOpenId(null)} />
+        <DetailPanel row={openRow} onClose={() => setOpenId(null)} />
       </div>
     </AdminShell>
   );
@@ -235,41 +309,67 @@ function Checkbox({
 }
 
 function DetailPanel({
-  entry,
+  row,
   onClose,
 }: {
-  entry: KnowledgeBaseEntry | null;
+  row: AdminKnowledgeRow | null;
   onClose: () => void;
 }) {
+  const [detail, setDetail] = useState<KnowledgeEntry | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  useEffect(() => {
+    if (!row) {
+      setDetail(null);
+      setDetailError(null);
+      return;
+    }
+    let cancelled = false;
+    setDetailLoading(true);
+    setDetailError(null);
+    getKnowledge(row.id)
+      .then((d) => {
+        if (!cancelled) setDetail(d);
+      })
+      .catch((err) => {
+        if (!cancelled) setDetailError(formatError(err));
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [row]);
+
   return (
     <>
-      {/* Overlay */}
       <div
         onClick={onClose}
         className={cn(
           "fixed inset-0 z-40 bg-black/20 transition-opacity",
-          entry ? "opacity-100" : "pointer-events-none opacity-0"
+          row ? "opacity-100" : "pointer-events-none opacity-0"
         )}
       />
-      {/* Panel */}
       <aside
         className={cn(
           "fixed right-0 top-0 z-50 flex h-screen w-[480px] flex-col border-l border-line bg-card shadow-card transition-transform",
-          entry ? "translate-x-0" : "translate-x-full"
+          row ? "translate-x-0" : "translate-x-full"
         )}
       >
-        {entry && (
+        {row && (
           <>
             <header className="flex items-start justify-between gap-4 border-b border-line px-6 py-4">
               <div className="min-w-0">
                 <h3 className="text-[18px] font-semibold leading-tight text-ink">
-                  {entry.topic}
+                  {row.topic}
                 </h3>
                 <p className="mt-1 text-xs text-muted">
-                  {entry.smeName} · created {entry.createdAt}
+                  {row.sme_name} · created {formatDate(row.created_at)}
                 </p>
                 <div className="mt-2">
-                  <StatusBadge status={entry.status} />
+                  <StatusBadge status={row.status} />
                 </div>
               </div>
               <button
@@ -282,58 +382,126 @@ function DetailPanel({
             </header>
 
             <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-5">
-              {/* Content */}
-              <section>
-                <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  Content
-                </h4>
-                <div className="rounded-input border border-line bg-page px-4 py-3 text-sm leading-relaxed text-ink/90">
-                  {entry.content}
+              {detailLoading ? (
+                <p className="text-sm text-muted">Loading entry…</p>
+              ) : detailError ? (
+                <div className="flex items-start gap-2 rounded-input border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#991B1B]">
+                  <AlertCircle size={14} className="mt-px shrink-0" />
+                  <span>{detailError}</span>
                 </div>
-              </section>
+              ) : detail ? (
+                <>
+                  <section>
+                    <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                      Content
+                    </h4>
+                    <div className="whitespace-pre-wrap rounded-input border border-line bg-page px-4 py-3 text-sm leading-relaxed text-ink/90">
+                      {detail.content}
+                    </div>
+                  </section>
 
-              {/* Sources */}
-              <section className="mt-5">
-                <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  Sources
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {entry.sources.map((s) => (
-                    <span
-                      key={s}
-                      className="inline-flex items-center gap-1.5 rounded-badge border border-line bg-page px-2 py-1 text-xs text-ink/80"
-                    >
-                      <FileText size={12} className="text-muted" />
-                      {s}
-                    </span>
-                  ))}
-                </div>
-              </section>
+                  <section className="mt-5">
+                    <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                      Sources
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {detail.sources.interviews.map((s) => (
+                        <span
+                          key={`iv-${s}`}
+                          className="inline-flex items-center gap-1.5 rounded-badge border border-line bg-page px-2 py-1 text-xs text-ink/80"
+                        >
+                          <FileText size={12} className="text-muted" />
+                          Interview {shortId(s)}
+                        </span>
+                      ))}
+                      {detail.sources.materials.map((s) => (
+                        <span
+                          key={`mat-${s}`}
+                          className="inline-flex items-center gap-1.5 rounded-badge border border-line bg-page px-2 py-1 text-xs text-ink/80"
+                        >
+                          <FileText size={12} className="text-muted" />
+                          Material {shortId(s)}
+                        </span>
+                      ))}
+                      {detail.sources.interviews.length === 0 &&
+                        detail.sources.materials.length === 0 && (
+                          <span className="text-xs text-muted">
+                            No sources recorded.
+                          </span>
+                        )}
+                    </div>
+                  </section>
 
-              {/* Timeline */}
-              <section className="mt-5">
-                <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  Approval Timeline
-                </h4>
-                <ol className="space-y-3">
-                  {entry.timeline.map((t, i) => (
-                    <li key={i} className="flex items-start gap-2.5">
-                      <CircleDot size={14} className="mt-0.5 text-magenta" />
-                      <div className="text-xs">
-                        <div className="text-ink">
-                          <span className="font-medium">{t.actor}</span> ·{" "}
-                          <span className="text-ink/70">{t.action}</span>
-                        </div>
-                        <div className="mt-0.5 text-muted">{t.at}</div>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              </section>
+                  <section className="mt-5">
+                    <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                      Approval Timeline
+                    </h4>
+                    <ol className="space-y-3">
+                      <TimelineItem
+                        actor={row.sme_name}
+                        action="Drafted"
+                        at={detail.created_at}
+                      />
+                      {detail.updated_at !== detail.created_at && (
+                        <TimelineItem
+                          actor={row.sme_name}
+                          action={`Status: ${detail.status}`}
+                          at={detail.updated_at}
+                        />
+                      )}
+                    </ol>
+                  </section>
+                </>
+              ) : null}
             </div>
           </>
         )}
       </aside>
     </>
   );
+}
+
+function TimelineItem({
+  actor,
+  action,
+  at,
+}: {
+  actor: string;
+  action: string;
+  at: string;
+}) {
+  return (
+    <li className="flex items-start gap-2.5">
+      <CircleDot size={14} className="mt-0.5 text-magenta" />
+      <div className="text-xs">
+        <div className="text-ink">
+          <span className="font-medium">{actor}</span> ·{" "}
+          <span className="text-ink/70">{action}</span>
+        </div>
+        <div className="mt-0.5 text-muted">{formatDate(at)}</div>
+      </div>
+    </li>
+  );
+}
+
+function formatError(err: unknown): string {
+  if (err instanceof ApiError) {
+    return err.status ? `${err.message} (HTTP ${err.status})` : err.message;
+  }
+  if (err instanceof Error) return err.message;
+  return "Unknown error";
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function shortId(id: string): string {
+  return id.length > 10 ? `${id.slice(0, 8)}…` : id;
 }

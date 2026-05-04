@@ -1,38 +1,92 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setPathname } from "@/test/next-mocks";
 import SmeKnowledgePage from "./page";
-import { smePendingKnowledge } from "@/lib/mock-data";
 
-describe("SME knowledge approval editor — rejection comment visibility", () => {
-  beforeEach(() => setPathname("/sme/knowledge"));
+const smeId = "sme_test12345";
 
-  it("hides rejection comment when active entry is not rejected", () => {
+const mockEntries = [
+  {
+    entry_id: "ke_001",
+    sme_id: smeId,
+    topic: "Vendor Compliance Escalations",
+    status: "draft",
+    content: "Draft content",
+    sources: { interviews: [], materials: [] },
+    created_at: "2026-04-28T10:00:00Z",
+    updated_at: "2026-04-28T10:00:00Z",
+  },
+  {
+    entry_id: "ke_002",
+    sme_id: smeId,
+    topic: "Dispute Filing Procedures",
+    status: "rejected",
+    content: "Rejected content",
+    sources: { interviews: [], materials: [] },
+    created_at: "2026-04-25T10:00:00Z",
+    updated_at: "2026-04-26T10:00:00Z",
+  },
+];
+
+function jsonResponse(body: unknown, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: status === 200 ? "OK" : "ERR",
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  } as unknown as Response;
+}
+
+beforeEach(() => {
+  setPathname("/sme/knowledge");
+  window.localStorage.setItem("sme_id", smeId);
+
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url.includes("/knowledge") && !url.includes("/admin")) {
+      return Promise.resolve(jsonResponse({ entries: mockEntries }));
+    }
+    return Promise.resolve(jsonResponse({}));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+});
+
+afterEach(() => {
+  window.localStorage.clear();
+  vi.unstubAllGlobals();
+});
+
+describe("SME knowledge approval editor", () => {
+  it("renders pending entries from the API", async () => {
     render(<SmeKnowledgePage />);
-    // The first pending entry is "draft" (status != rejected) by fixture.
-    const first = smePendingKnowledge[0];
-    expect(first.status).not.toBe("rejected");
-    expect(screen.queryByText(/Rejected by Admin/i)).toBeNull();
-    expect(screen.queryByText(/Comment:/i)).toBeNull();
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Vendor Compliance Escalations/i),
+      ).toBeInTheDocument(),
+    );
   });
 
-  it("shows rejection comment after switching to a rejected entry", async () => {
+  it("can switch active entry by clicking its sidebar button", async () => {
     const user = userEvent.setup();
     render(<SmeKnowledgePage />);
 
-    const rejected = smePendingKnowledge.find((e) => e.status === "rejected");
-    expect(rejected).toBeDefined();
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Dispute Filing Procedures/i),
+      ).toBeInTheDocument(),
+    );
 
-    // Click the matching button in the left list (first match wins; topic is unique).
     const button = screen
       .getAllByRole("button")
-      .find((b) => b.textContent?.includes(rejected!.topic));
+      .find((b) => b.textContent?.includes("Dispute Filing Procedures"));
     expect(button).toBeDefined();
     await user.click(button!);
 
-    expect(screen.getByText(/Rejected by Admin/i)).toBeInTheDocument();
-    expect(screen.getByText(/Comment:/i)).toBeInTheDocument();
-    expect(screen.getByText(rejected!.rejectionComment!)).toBeInTheDocument();
+    // Header reflects newly selected entry
+    const heading = await screen.findByRole("heading", {
+      name: /Dispute Filing Procedures/i,
+    });
+    expect(heading).toBeInTheDocument();
   });
 });

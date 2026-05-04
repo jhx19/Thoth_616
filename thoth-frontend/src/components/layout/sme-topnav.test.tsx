@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { setPathname } from "@/test/next-mocks";
 import { SmeTopNav } from "./sme-topnav";
-import { smeEscalated } from "@/lib/mock-data";
 
 describe("SmeTopNav", () => {
   beforeEach(() => setPathname("/sme/dashboard"));
@@ -22,22 +21,20 @@ describe("SmeTopNav", () => {
     const { container } = render(<SmeTopNav />);
     const dashboard = screen.getByRole("link", { name: /Dashboard/i });
     expect(dashboard.className).toMatch(/text-magenta/);
-    // The underline is a span with bg-magenta + h-[2px] inside the active link.
     const underline = dashboard.querySelector("span.bg-magenta");
     expect(underline).not.toBeNull();
     expect(underline?.className).toMatch(/h-\[2px\]/);
 
-    // Inactive links should not have an underline span sibling.
     const interviews = screen.getByRole("link", { name: /Interviews/i });
     expect(interviews.className).not.toMatch(/text-magenta/);
     expect(container.querySelectorAll("a span.bg-magenta.h-\\[2px\\]")).toHaveLength(1);
   });
 
-  it("Escalated Questions badge shows the unanswered count", () => {
+  it("does not show count badges on Escalated Questions (design spec)", () => {
     render(<SmeTopNav />);
     const escalated = screen.getByRole("link", { name: /Escalated Questions/i });
-    const badge = within(escalated).getByLabelText(`${smeEscalated.length} unanswered`);
-    expect(badge).toBeInTheDocument();
-    expect(badge).toHaveTextContent(String(smeEscalated.length));
+    expect(
+      escalated.querySelector('[aria-label*="unanswered"]'),
+    ).toBeNull();
   });
 });

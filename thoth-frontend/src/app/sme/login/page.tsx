@@ -3,11 +3,26 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { X } from "lucide-react";
+import { AlertCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ApiError, createSme, listSmes } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type Tab = "login" | "register";
+
+function persistSession(smeId: string, name: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem("sme_id", smeId);
+  window.localStorage.setItem("sme_name", name);
+}
+
+function formatApiError(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    return err.status ? `${err.message} (HTTP ${err.status})` : err.message;
+  }
+  if (err instanceof Error) return err.message;
+  return fallback;
+}
 
 export default function SmeLoginPage() {
   const [tab, setTab] = useState<Tab>("login");
@@ -75,14 +90,34 @@ function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
+  const [formError, setFormError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email.trim()) {
+    const trimmed = email.trim();
+    if (!trimmed) {
       setError("Email is required");
       return;
     }
-    router.push("/sme/dashboard");
+    setFormError("");
+    setSubmitting(true);
+    try {
+      const { smes } = await listSmes();
+      const match = smes.find(
+        (s) => s.contact_email.toLowerCase() === trimmed.toLowerCase(),
+      );
+      if (!match) {
+        setFormError("No account found with this email. Please register first.");
+        return;
+      }
+      persistSession(match.sme_id, match.name);
+      router.push("/sme/dashboard");
+    } catch (err) {
+      setFormError(formatApiError(err, "Couldn't reach the server. Please try again."));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -102,14 +137,23 @@ function LoginForm() {
         onChange={(v) => {
           setEmail(v);
           if (error) setError("");
+          if (formError) setFormError("");
         }}
         placeholder="you@mez.org"
         type="email"
       />
 
-      <Button type="submit" variant="primary" size="lg" className="w-full">
-        Continue
+      <Button
+        type="submit"
+        variant="primary"
+        size="lg"
+        className="w-full"
+        disabled={submitting}
+      >
+        {submitting ? "Signing in…" : "Continue"}
       </Button>
+
+      {formError && <FormErrorBanner message={formError} />}
     </form>
   );
 }
@@ -133,6 +177,8 @@ function RegisterForm() {
     tags?: string;
     email?: string;
   }>({});
+  const [formError, setFormError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   function addTag() {
     const v = tagInput.trim();
@@ -146,7 +192,7 @@ function RegisterForm() {
     setTags((arr) => arr.filter((x) => x !== t));
   }
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     const next: typeof errors = {};
     if (!name.trim()) next.name = "Full name is required";
@@ -155,7 +201,25 @@ function RegisterForm() {
     if (!email.trim()) next.email = "Email is required";
     setErrors(next);
     if (Object.keys(next).length > 0) return;
-    router.push("/sme/dashboard");
+
+    setFormError("");
+    setSubmitting(true);
+    try {
+      const sme = await createSme({
+        name: name.trim(),
+        specialization: specialization.trim(),
+        sub_areas: tags,
+        contact_email: email.trim(),
+        ...(role.trim() ? { role: role.trim() } : {}),
+        ...(department.trim() ? { department: department.trim() } : {}),
+      });
+      persistSession(sme.sme_id, sme.name);
+      router.push("/sme/dashboard");
+    } catch (err) {
+      setFormError(formatApiError(err, "Registration failed. Please try again."));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -266,10 +330,30 @@ function RegisterForm() {
         placeholder="e.g. Compliance Office"
       />
 
-      <Button type="submit" variant="primary" size="lg" className="w-full">
-        Submit
+      <Button
+        type="submit"
+        variant="primary"
+        size="lg"
+        className="w-full"
+        disabled={submitting}
+      >
+        {submitting ? "Creating account…" : "Submit"}
       </Button>
+
+      {formError && <FormErrorBanner message={formError} />}
     </form>
+  );
+}
+
+function FormErrorBanner({ message }: { message: string }) {
+  return (
+    <div
+      role="alert"
+      className="flex items-start gap-2 rounded-input border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#991B1B]"
+    >
+      <AlertCircle size={14} className="mt-px shrink-0" />
+      <span>{message}</span>
+    </div>
   );
 }
 
