@@ -3,14 +3,17 @@
 import Link from "next/link";
 import { Plus, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { chatHistory } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
+export type ChatSessionListItem = { id: string; first: string; ts: string };
+
 export function ChatSidebar({
+  sessions,
   activeId,
   onSelect,
   onNewChat,
 }: {
+  sessions: ChatSessionListItem[];
   activeId: string;
   onSelect: (id: string) => void;
   onNewChat: () => void;
@@ -25,7 +28,13 @@ export function ChatSidebar({
         <span className="text-[15px] font-semibold text-ink">Thoth</span>
       </Link>
       <div className="p-3">
-        <Button onClick={onNewChat} className="w-full" size="md">
+        <Button
+          type="button"
+          aria-label="Start new chat conversation"
+          onClick={onNewChat}
+          className="w-full"
+          size="md"
+        >
           <Plus size={16} />
           New Chat
         </Button>
@@ -34,35 +43,45 @@ export function ChatSidebar({
         Recent
       </div>
       <nav className="flex-1 overflow-y-auto scrollbar-thin px-2 pb-3">
-        <ul className="space-y-0.5">
-          {chatHistory.map((c) => {
-            const active = c.id === activeId;
-            return (
-              <li key={c.id}>
-                <button
-                  onClick={() => onSelect(c.id)}
-                  className={cn(
-                    "flex w-full items-start gap-2 rounded-input px-3 py-2 text-left text-sm text-ink/80 hover:bg-page",
-                    active && "bg-magenta-50 border-l-2 border-magenta pl-[10px]"
-                  )}
-                >
-                  <MessageSquare
-                    size={14}
-                    className={cn("mt-0.5 shrink-0 text-muted", active && "text-magenta")}
-                  />
-                  <span className="flex-1 min-w-0">
-                    <span className="block truncate text-[13px] leading-tight">
-                      {c.first}
+        {sessions.length === 0 ? (
+          <p className="px-3 py-4 text-center text-xs text-muted">
+            No chats yet. Send a message to start your first conversation.
+          </p>
+        ) : (
+          <ul className="space-y-0.5">
+            {sessions.map((c) => {
+              const active = c.id === activeId;
+              return (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(c.id)}
+                    className={cn(
+                      "flex w-full items-start gap-2 rounded-input px-3 py-2 text-left text-sm text-ink/80 hover:bg-page",
+                      active && "border-l-2 border-magenta bg-magenta-50 pl-[10px]",
+                    )}
+                  >
+                    <MessageSquare
+                      size={14}
+                      className={cn(
+                        "mt-0.5 shrink-0 text-muted",
+                        active && "text-magenta",
+                      )}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] leading-tight">
+                        {c.first}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-muted">
+                        {c.ts}
+                      </span>
                     </span>
-                    <span className="mt-0.5 block text-[11px] text-muted">
-                      {c.ts}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </nav>
     </aside>
   );

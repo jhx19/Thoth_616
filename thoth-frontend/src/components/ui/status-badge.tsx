@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { EntryStatus } from "@/lib/mock-data";
+import type { EntryStatus } from "@/lib/api";
 
 const STATUS_LABEL: Record<EntryStatus, string> = {
   draft: "Draft",

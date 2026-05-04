@@ -1,7 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-// We re-import api.ts inside each test after stubbing env, since BASE_URL
-// is read at module-load time.
 let fetchMock: ReturnType<typeof vi.fn>;
 
 function jsonResponse(body: unknown, status = 200) {
@@ -22,52 +20,63 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  vi.unstubAllEnvs();
 });
 
 describe("api client", () => {
-  it("includes Authorization: Bearer header on every request", async () => {
-    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://localhost:8000/api/v1");
-    vi.stubEnv("NEXT_PUBLIC_BENCHMARK_API_KEY", "thoth-secret-2026");
+  it("sends requests to /api/proxy/* (same-origin; no browser bearer)", async () => {
     const api = await import("./api");
-
-    await api.listKnowledge({ status: "sme_approved" });
-    await api.adminApproveKnowledge("ke_xyz");
-    await api.rejectKnowledge("ke_xyz", "needs more detail");
-    await api.getSme("sme_3eIv9ONSWB");
-    await api.createInterview("sme_3eIv9ONSWB");
-    await api.addInterviewTurn("iv_abc", { answer: "ok" });
-
-    expect(fetchMock).toHaveBeenCalledTimes(6);
-    for (const call of fetchMock.mock.calls) {
-      const init = call[1] as RequestInit;
-      const headers = init.headers as Record<string, string>;
-      expect(headers, `missing headers on ${call[0]}`).toBeDefined();
-      expect(headers.Authorization).toBe("Bearer thoth-secret-2026");
-    }
-  });
-
-  it("uses NEXT_PUBLIC_API_BASE_URL as the base URL", async () => {
-    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://example.test/api/v1");
-    vi.stubEnv("NEXT_PUBLIC_BENCHMARK_API_KEY", "k");
-    const api = await import("./api");
-
     await api.listKnowledge({ status: "sme_approved" });
     await api.getSme("sme_3eIv9ONSWB");
     await api.adminApproveKnowledge("ke_aaa");
+    await api.rejectKnowledge("ke_bbb", "needs more detail");
+    await api.createSme({
+      name: "Test",
+      specialization: "Test",
+      sub_areas: ["a"],
+      contact_email: "t@t.org",
+    });
+    await api.getDashboardKpis();
 
     const urls = fetchMock.mock.calls.map((c) => String(c[0]));
-    expect(urls[0]).toBe("https://example.test/api/v1/knowledge?status=sme_approved");
-    expect(urls[1]).toBe("https://example.test/api/v1/smes/sme_3eIv9ONSWB");
-    expect(urls[2]).toBe("https://example.test/api/v1/knowledge/ke_aaa/admin-approve");
+    expect(urls[0]).toBe("/api/proxy/knowledge?status=sme_approved");
+    expect(urls[1]).toBe("/api/proxy/smes/sme_3eIv9ONSWB");
+    expect(urls[2]).toBe("/api/proxy/knowledge/ke_aaa/admin-approve");
+    expect(urls[3]).toBe("/api/proxy/knowledge/ke_bbb/reject");
+    expect(urls[4]).toBe("/api/proxy/smes");
+    expect(urls[5]).toBe("/api/proxy/admin/dashboard/kpis");
+
+    for (const call of fetchMock.mock.calls) {
+      const init = call[1] as RequestInit | undefined;
+      const headers = init?.headers as Record<string, string> | undefined;
+      expect(headers?.Authorization, `unexpected Authorization on ${call[0]}`).toBeUndefined();
+    }
   });
 
-  it("falls back to http://localhost:8000/api/v1 when env var is unset", async () => {
-    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "");
-    vi.stubEnv("NEXT_PUBLIC_BENCHMARK_API_KEY", "k");
+  it("forwards JSON bodies for POST/PUT requests", async () => {
     const api = await import("./api");
-    await api.listKnowledge();
-    const url = String(fetchMock.mock.calls[0][0]);
-    expect(url.startsWith("http://localhost:8000/api/v1")).toBe(true);
+    await api.rejectKnowledge("ke_aaa", "missing context");
+    await api.createSme({
+      name: "Dr. Test",
+      specialization: "MEZ",
+      sub_areas: ["x", "y"],
+      contact_email: "test@example.com",
+      role: "Lead",
+    });
+
+    const rejectInit = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(rejectInit.method).toBe("POST");
+    expect(rejectInit.body).toBe(JSON.stringify({ reason: "missing context" }));
+
+    const createInit = fetchMock.mock.calls[1][1] as RequestInit;
+    expect(createInit.method).toBe("POST");
+    expect(createInit.body).toBe(
+      JSON.stringify({
+        name: "Dr. Test",
+        specialization: "MEZ",
+        sub_areas: ["x", "y"],
+        contact_email: "test@example.com",
+        role: "Lead",
+      }),
+    );
   });
 });

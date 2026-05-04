@@ -1,28 +1,43 @@
 "use client";
 
-import { useState } from "react";
-import { Search, Mail, Building2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { AlertCircle, Mail, Building2, RefreshCw, Search } from "lucide-react";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { Button } from "@/components/ui/button";
-import { smes, smeStats } from "@/lib/mock-data";
+import { ApiError, AdminSme, listAdminSmes } from "@/lib/api";
 
 export default function ManageSmesPage() {
   const [q, setQ] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const [smes, setSmes] = useState<AdminSme[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filtered = smes.filter((s) => {
-    if (!q.trim()) return true;
-    const needle = q.toLowerCase();
-    return (
-      s.name.toLowerCase().includes(needle) ||
-      s.specialization.toLowerCase().includes(needle) ||
-      s.sub_areas.some((t) => t.toLowerCase().includes(needle))
-    );
-  });
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(q.trim()), 300);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const rows = await listAdminSmes(debounced || undefined);
+      setSmes(rows);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to load SMEs");
+    } finally {
+      setLoading(false);
+    }
+  }, [debounced]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   return (
     <AdminShell title="Manage SMEs">
       <div className="px-8 py-6">
-        {/* Header */}
         <div className="mb-6 flex items-center justify-between gap-4">
           <h2 className="text-[24px] font-bold text-ink">SME Directory</h2>
           <div className="relative w-[320px]">
@@ -39,8 +54,29 @@ export default function ManageSmesPage() {
           </div>
         </div>
 
-        {/* Cards grid */}
-        {filtered.length === 0 ? (
+        {error && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-card border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#991B1B]">
+            <div className="flex items-center gap-2">
+              <AlertCircle size={16} />
+              {error}
+            </div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>
+              <RefreshCw size={14} />
+              Retry
+            </Button>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="grid grid-cols-2 gap-5">
+            {[0, 1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="h-[200px] animate-pulse rounded-card border border-line bg-card"
+              />
+            ))}
+          </div>
+        ) : smes.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-card border border-dashed border-line bg-card py-20 text-center">
             <p className="text-sm font-medium text-ink">No SMEs found</p>
             <p className="mt-1 text-xs text-muted">
@@ -49,8 +85,7 @@ export default function ManageSmesPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-5">
-            {filtered.map((s) => {
-              const stats = smeStats[s.id];
+            {smes.map((s) => {
               const initials = s.name
                 .replace(/^Dr\.\s*/, "")
                 .split(" ")
@@ -60,7 +95,7 @@ export default function ManageSmesPage() {
                 .toUpperCase();
               return (
                 <article
-                  key={s.id}
+                  key={s.sme_id}
                   className="rounded-card border border-line bg-card p-5 shadow-card"
                 >
                   <div className="flex items-start gap-4">
@@ -72,14 +107,14 @@ export default function ManageSmesPage() {
                         {s.name}
                       </h3>
                       <p className="text-xs text-muted">
-                        {stats?.role ?? "Subject Matter Expert"}
+                        {s.role ?? "Subject Matter Expert"}
                       </p>
 
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         <span className="inline-flex items-center rounded-badge bg-magenta-50 px-2 py-0.5 text-[11px] font-medium text-magenta">
                           {s.specialization}
                         </span>
-                        {s.sub_areas.map((t) => (
+                        {(s.sub_areas ?? []).map((t) => (
                           <span
                             key={t}
                             className="inline-flex items-center rounded-badge border border-line bg-page px-2 py-0.5 text-[11px] text-ink/70"
@@ -94,12 +129,12 @@ export default function ManageSmesPage() {
                   <div className="mt-4 grid grid-cols-2 gap-3 border-t border-line pt-3 text-xs text-muted">
                     <div className="flex items-center gap-1.5">
                       <Mail size={12} />
-                      <span className="truncate text-ink/80">{s.email}</span>
+                      <span className="truncate text-ink/80">{s.contact_email}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <Building2 size={12} />
                       <span className="truncate text-ink/80">
-                        {stats?.department ?? "—"}
+                        {s.department ?? "—"}
                       </span>
                     </div>
                   </div>
@@ -107,11 +142,11 @@ export default function ManageSmesPage() {
                   <div className="mt-3 flex items-center justify-between">
                     <p className="text-xs text-muted">
                       <span className="font-medium text-ink">
-                        {stats?.interviews ?? 0}
+                        {s.stats.interviews}
                       </span>{" "}
                       interviews ·{" "}
                       <span className="font-medium text-ink">
-                        {stats?.approved ?? 0}
+                        {s.stats.approved}
                       </span>{" "}
                       approved entries
                     </p>
