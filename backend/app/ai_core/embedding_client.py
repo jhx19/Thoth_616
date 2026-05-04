@@ -1,9 +1,10 @@
-import voyageai
+import os
+from openai import AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-MODEL = "voyage-3"
-DIM = 1024
-_CHARS_PER_TOKEN = 4  # rough estimate for chunking
+MODEL = "text-embedding-3-small"
+DIM = 1024  # matches DB VECTOR(1024) schema; OpenAI supports custom dimensions
+_CHARS_PER_TOKEN = 4
 
 
 def _chunk_text(text: str, target_tokens: int, overlap: int) -> list[str]:
@@ -19,11 +20,13 @@ def _chunk_text(text: str, target_tokens: int, overlap: int) -> list[str]:
 
 class EmbeddingService:
     def __init__(self, client=None):
-        self._client = client or voyageai.AsyncClient()
+        # Embeddings go directly to OpenAI — no base_url override
+        self._client = client or AsyncOpenAI(
+            api_key=os.getenv("LLM_API_KEY"),
+        )
 
     async def embed_text(self, text: str) -> list[float]:
-        result = await self._embed([text])
-        return result[0]
+        return (await self._embed([text]))[0]
 
     async def embed_chunks(self, chunks: list[str]) -> list[list[float]]:
         return await self._embed(chunks)
@@ -41,5 +44,9 @@ class EmbeddingService:
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=4))
     async def _embed(self, texts: list[str]) -> list[list[float]]:
-        result = await self._client.embed(texts, model=MODEL)
-        return result.embeddings
+        response = await self._client.embeddings.create(
+            model=MODEL,
+            input=texts,
+            dimensions=DIM,
+        )
+        return [item.embedding for item in response.data]

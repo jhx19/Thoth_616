@@ -1,9 +1,10 @@
 import json
+import os
 import re
 from dataclasses import dataclass
 from typing import Literal
 
-from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.ai_core.prompt_loader import PromptLoader
@@ -19,10 +20,13 @@ class LLMResponse:
 
 
 class LLMClient:
-    def __init__(self, prompt_loader: PromptLoader, model_router: ModelRouter):
+    def __init__(self, prompt_loader: PromptLoader, model_router: ModelRouter, client=None):
         self._prompts = prompt_loader
         self._router = model_router
-        self._client = AsyncAnthropic()
+        self._client = client or AsyncOpenAI(
+            api_key=os.getenv("LLM_API_KEY"),
+            base_url=os.getenv("LLM_BASE_URL") or None,
+        )
 
     async def call(
         self,
@@ -35,11 +39,11 @@ class LLMClient:
 
         msg = await self._create(model=model, system=rendered.system, user=rendered.user)
 
-        text = msg.content[0].text
+        text = msg.choices[0].message.content
         TokenTracker.record(
             model=model,
-            prompt=msg.usage.input_tokens,
-            completion=msg.usage.output_tokens,
+            prompt=msg.usage.prompt_tokens,
+            completion=msg.usage.completion_tokens,
         )
 
         parsed_json = None
@@ -50,11 +54,13 @@ class LLMClient:
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=4))
     async def _create(self, model: str, system: str, user: str):
-        return await self._client.messages.create(
+        return await self._client.chat.completions.create(
             model=model,
             max_tokens=4000,
-            system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": user}],
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
         )
 
     @staticmethod
