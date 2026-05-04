@@ -1,3 +1,14 @@
+# Python / backend
 .venv/
-.env
 __pycache__/
+.env
+
+# Frontend (Next.js)
+thoth-frontend/node_modules/
+thoth-frontend/.next/
+thoth-frontend/out/
+thoth-frontend/*.tsbuildinfo
+thoth-frontend/.env*.local
+
+# OS
+.DS_Store
