@@ -2,7 +2,7 @@
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.12
 - A PostgreSQL 15+ database with the `pgvector` extension enabled (Supabase free tier works)
 - API keys: an OpenRouter key (LLM calls) and an OpenAI key (embeddings)
 
