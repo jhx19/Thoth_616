@@ -150,7 +150,7 @@ The specification defines endpoints for each of the 8 capabilities:
 | `POST /query` | 6. Q&A, 7. Clarification, 8. Routing |
 | `POST /system/purge`, `POST /system/reset` | Benchmark state management |
 
-See **`benchmark/api-specification.md`** for the full contract with request/response schemas.
+See **`api-specification.md`** for the full contract with request/response schemas.
 
 ### Token Usage Reporting
 
