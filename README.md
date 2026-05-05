@@ -15,13 +15,7 @@ cd Thoth_616
 
 ### 2. Set up the `.env` file
 
-Copy the example and fill in your credentials:
-
-```bash
-cp backend/.env.example backend/.env
-```
-
-All required keys and their format are documented in `backend/.env.example`.
+The `.env` file is already included in the repo with all credentials. No changes needed — it will work as-is.
 
 ### 3. Run database migrations
 
@@ -37,7 +31,7 @@ alembic upgrade head
 python -m uvicorn app.main:app --reload --port 8000
 ```
 
-The API is now live at `http://localhost:8000/api/v1`. The benchmark API key is in `backend/.env` as `BENCHMARK_API_KEY`.
+The API is now live at `http://localhost:8000/api/v1`. The benchmark API key is in `.env` as `BENCHMARK_API_KEY`.
 
 ---
 
